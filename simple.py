@@ -7,13 +7,6 @@ import logging
 import asyncio
 import string
 import re
-import asyncio
-import os
-import time
-from typing import Set, Dict, Any
-from telethon import TelegramClient
-from telethon.errors import FloodWaitError
-from telethon.tl.types import Message
 from typing import Set, Dict, List, Callable, Optional, Union, Tuple, Any
 from functools import wraps
 from datetime import datetime, timedelta
@@ -25,10 +18,10 @@ from telethon.tl.functions.account import UpdateProfileRequest, UpdateUsernameRe
 from telethon.tl.functions.photos import UploadProfilePhotoRequest
 from telethon.tl.types import InputPeerEmpty, InputPeerChannel, InputPeerUser, InputPeerChat, Photo
 from telethon.errors import ChatAdminRequiredError, ChatWriteForbiddenError, UserBannedInChannelError, SessionPasswordNeededError
-
 from dotenv import load_dotenv
 
-load_dotenv()  
+# Load environment variables from .env file
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(
@@ -366,128 +359,67 @@ class MonitorDashboard:
                     dashboard += f"• `{campaign_id}`: {status} ({targets} targets, {sent} sent, {failed} failed)\n"
         return dashboard if dashboard != "📊 **Campaign Dashboard**\n\n" else "📝 No active campaigns"
 
-class MessageForwarder:
-    instance = None
-    primary_admin = 1715541908  # Protected admin ID
 
-    def __init__(self, client: TelegramClient):
+class MessageForwarder:
+    # Class attribute to store the current instance
+    instance = None
+    # Primary admin ID is fixed and protected from removal
+    primary_admin = 1715541908  # This ID is protected and cannot be removed
+
+    def __init__(self, client):
         self.client = client
-        self.client.flood_sleep_threshold = 5
+        self.client.flood_sleep_threshold = 5  # Reduce flood wait time
         self.flood_protection = {
-            'max_messages': 30,
-            'cooldown': 60,
-            'message_count': 0,
-            'last_reset': time.time()
+            'max_messages': 30,  # Max messages per minute
+            'cooldown': 60,      # Cooldown period in seconds
+            'message_count': 0,  # Current message count
+            'last_reset': time.time()  # Last counter reset time
         }
         self.forwarding_enabled = False
         self.target_chats: Set[int] = set()
-        self.forward_interval = 300
-        self.stored_messages: Dict[str, Any] = {}
+        self.forward_interval = 300  # Default from config
+        self.stored_messages: Dict[str, Any] = {}  # Store multiple messages by ID
         self._commands_registered = False
-        self._forwarding_tasks: Dict[str, asyncio.Task] = {}
-        self._message_queue = asyncio.Queue()
-        self._cache = {}
-        self.scheduled_tasks: Dict[str, asyncio.Task] = {}
-        self.targeted_campaigns: Dict[str, Dict] = {}
-        
-        admin_ids = os.getenv('ADMIN_IDS', '').split(',')
-        self.admins: Set[int] = set(int(id.strip()) for id in admin_ids if id.strip())
-        self.admins.add(self.primary_admin)
+        self._forwarding_tasks: Dict[str, asyncio.Task] = {}  # Track multiple forwarding tasks
+        self._message_queue = asyncio.Queue()  # Message queue for faster processing
+        self._cache = {}  # Cache for frequently accessed data
 
+        # Scheduled campaigns
+        self.scheduled_tasks: Dict[str, asyncio.Task] = {}  # Track scheduled tasks
+        self.targeted_campaigns: Dict[str, Dict] = {}  # Store targeted ad campaigns
+
+        # Admin management - Always ensure primary admin is included
+        admin_ids = os.getenv('ADMIN_IDS', '').split(',')
+        self.admins: Set[int] = set([int(id.strip()) for id in admin_ids if id.strip()])
+        # Always ensure the primary admin is in the admins list
+        self.admins.add(MessageForwarder.primary_admin)
+
+        # Analytics
         self.analytics = {
-            "forwards": {},
-            "failures": {},
-            "start_time": time.time(),
-            "auto_replies": {}
+            "forwards": {},  # Track successful forwards
+            "failures": {},  # Track failed forwards
+            "start_time": time.time(),  # Track when bot started
+            "auto_replies": {}  # Store auto-reply patterns
         }
         
+        # Initialize default auto-replies
         self.auto_replies = {
             "hello": "👋 Hello! How can I assist you today?",
             "price": "💰 Please contact @admin for pricing details",
             "help": "ℹ️ Use /help to see all available commands"
         }
-        self.monitor = MonitorDashboard(
-            forwarder=self,
-        
-        )
 
-        self.register_commands()
+        # Dashboard for live monitoring
+        self.monitor = MonitorDashboard(self)
+
+        # Set this instance as the current one
         MessageForwarder.instance = self
+
         logger.info("MessageForwarder initialized")
 
+        # Register command handlers
+        self.register_commands()
 
-    async def start(self):
-        """Start processing messages from the queue"""
-        logger.info("Starting message forwarder")
-        self.forwarding_enabled = True
-        while self.forwarding_enabled:
-            try:
-                # Process messages with flood control
-                current_time = time.time()
-                if current_time - self.flood_protection['last_reset'] > self.flood_protection['cooldown']:
-                    self.flood_protection['message_count'] = 0
-                    self.flood_protection['last_reset'] = current_time
-
-                if self.flood_protection['message_count'] >= self.flood_protection['max_messages']:
-                    await asyncio.sleep(self.flood_protection['cooldown'])
-                    continue
-
-                message_data = await self._message_queue.get()
-                await self._process_message(message_data)
-                self.flood_protection['message_count'] += 1
-                
-            except asyncio.CancelledError:
-                logger.info("Message processing stopped")
-                break
-            except Exception as e:
-                logger.error(f"Processing error: {str(e)}")
-
-    async def _process_message(self, message_data: Dict):
-        """Handle message forwarding with error handling"""
-        try:
-            for chat_id in self.target_chats:
-                await self.client.send_message(
-                    entity=chat_id,
-                    message=message_data.get('text'),
-                    file=message_data.get('media')
-                )
-                self.analytics["forwards"][chat_id] = self.analytics["forwards"].get(chat_id, 0) + 1
-        except FloodWaitError as e:
-            logger.warning(f"Flood wait: {e.seconds}s")
-            await asyncio.sleep(e.seconds)
-        except Exception as e:
-            logger.error(f"Forward failed: {str(e)}")
-            self.analytics["failures"][chat_id] = self.analytics["failures"].get(chat_id, 0) + 1
-
-    async def stop(self):
-        """Gracefully stop all forwarding operations"""
-        self.forwarding_enabled = False
-        for task_id, task in self._forwarding_tasks.items():
-            task.cancel()
-        logger.info("All forwarding tasks stopped")
-
-    def register_commands(self):
-        """Register all command handlers"""
-        if not self._commands_registered:
-            # [Your existing command registration logic]
-            self._commands_registered = True
-            logger.info("All commands registered")
-
-    async def add_target_chat(self, chat_id: int):
-        """Add a chat to forwarding targets"""
-        self.target_chats.add(chat_id)
-        logger.info(f"Added chat {chat_id} to targets")
-
-    async def remove_target_chat(self, chat_id: int):
-        """Remove a chat from forwarding targets"""
-        if chat_id in self.target_chats:
-            self.target_chats.remove(chat_id)
-            logger.info(f"Removed chat {chat_id} from targets")
-
-    @classmethod
-    def get_instance(cls):
-        """Get the current instance of MessageForwarder"""
-        return cls.instance
     async def _get_sender_name(self, event):
         """Get the name of the sender of an event, preferring client name over username"""
         try:
@@ -1871,15 +1803,14 @@ Use `/stopad {msg_id}` to stop it anytime.
         """Schedule a message to be sent at a specific time without confirmation"""
         try:
             command_parts = event.text.split(maxsplit=2)
-            usage = """❌ Format: /schedule <msg_id> <time>
+            if len(command_parts) < 3:
+                usage = """❌ Format: /schedule <msg_id> <time>
 
 Time format examples:
 - "5m" (5 minutes from now)
 - "2h" (2 hours from now)
 - "12:30" (today at 12:30, or tomorrow if already past)
 - "2023-12-25 14:30" (specific date and time)"""
-
-            if len(command_parts) < 3:
                 await event.reply(usage)
                 return
 
@@ -2065,7 +1996,12 @@ The message will be forwarded at the scheduled time.
 
             for target in targets:
                 try:
-                    await message.forward_to(target)
+                    if isinstance(target, tuple):
+                        # Target is a tuple of (chat_id, topic_id)
+                        chat_id, topic_id = target
+                        await message.forward_to(chat_id, reply_to=topic_id)
+                    else:
+                        await message.forward_to(target)
                     success_count += 1
 
                     # Update analytics
@@ -2233,20 +2169,32 @@ The message will be forwarded at the scheduled time.
 
     @admin_only
     async def cmd_addtarget(self, event):
-        """Add a target chat for forwarding"""
+        """Add target chats by serial number or chat ID"""
         try:
-            # Check if replying to a message to get the chat ID directly
-            if event.is_reply:
-                reply_msg = await event.get_reply_message()
-                if reply_msg:
-                    # Try to get chat ID from forwarded message
-                    if reply_msg.forward and hasattr(reply_msg.forward.chat, 'id'):
-                        chat_id = reply_msg.forward.chat.id
-                    # Try to get chat ID from message chat
-                    elif hasattr(reply_msg, 'chat') and hasattr(reply_msg.chat, 'id'):
-                        chat_id = reply_msg.chat.id
-                    else:
-                        chat_id = None
+            command_parts = event.text.split()
+            if len(command_parts) < 2:
+                await event.reply("❌ Please provide serial numbers or chat IDs\nFormat: /addtarget <serial_no1,serial_no2> or <id1,id2>")
+                return
+
+            # Get list of all available chats
+            all_chats = []
+            async for dialog in self.client.iter_dialogs():
+                if (dialog.is_channel or dialog.is_group) and not dialog.is_user:
+                    all_chats.append(dialog.id)
+
+            target_str = command_parts[1]
+            target_list = [t.strip() for t in target_str.split(',')]
+
+            success_list = []
+            fail_list = []
+
+            for target in target_list:
+                try:
+                    chat_id = None
+                    # Try parsing as serial number first
+                    if target.isdigit() and int(target) > 0 and int(target) <= len(all_chats):
+                        serial_no = int(target)
+                        chat_id = all_chats[serial_no - 1]  # Convert to 0-based index
 
                     if chat_id:
                         chat_name = None
@@ -2260,6 +2208,9 @@ The message will be forwarded at the scheduled time.
                         await event.reply(f"✅ Added target chat: {chat_name} ({chat_id})")
                         logger.info(f"Added target chat from reply: {chat_id}, current targets: {self.target_chats}")
                         return
+                except Exception as e:
+                    logger.error(f"Error processing target {target}: {str(e)}")
+                    continue
 
             # Process from command parameters
             command_parts = event.text.split(maxsplit=1)
@@ -2283,8 +2234,18 @@ The message will be forwarded at the scheduled time.
                 try:
                     chat_id = None
 
+                    # Handle topic links (t.me/c/channelid/topicid)
+                    topic_match = re.match(r'(?:https?://)?(?:t\.me|telegram\.me|telegram\.dog)/c/(\d+)(?:/(\d+))?', target)
+                    if topic_match:
+                        channel_id = int(topic_match.group(1))
+                        topic_id = int(topic_match.group(2)) if topic_match.group(2) else None
+                        chat_id = int(f"-100{channel_id}")  # Convert to supergroup format
+                        if topic_id:
+                            # Store topic ID along with chat ID
+                            chat_id = (chat_id, topic_id)
+                        
                     # Handle user ID format (uid:12345)
-                    if target.lower().startswith('uid:'):
+                    elif target.lower().startswith('uid:'):
                         try:
                             uid = int(target[4:])
                             entity = await self.client.get_entity(uid)
@@ -2415,23 +2376,33 @@ The message will be forwarded at the scheduled time.
 
     @admin_only
     async def cmd_removetarget(self, event):
-        """Remove specified target chats without confirmation"""
+        """Remove target chats by serial number or chat ID"""
         try:
-            # Check if replying to a message to get the chat ID directly
-            if event.is_reply:
-                reply_msg = await event.get_reply_message()
-                if reply_msg and hasattr(reply_msg, 'chat') and hasattr(reply_msg.chat, 'id'):
-                    chat_id = reply_msg.chat.id
-                    chat_name = getattr(reply_msg.chat, 'title', str(chat_id))
+            command_parts = event.text.split()
+            if len(command_parts) < 2:
+                await event.reply("❌ Please provide serial numbers or chat IDs\nFormat: /removetarget <serial_no1,serial_no2> or <id1,id2>")
+                return
 
-                    if chat_id in self.target_chats:
-                        self.target_chats.remove(chat_id)
-                        await event.reply(f"✅ Removed target chat: {chat_name} ({chat_id})")
-                        logger.info(f"Removed target chat from reply: {chat_id}")
-                        return
-                    else:
-                        await event.reply(f"❌ Chat {chat_name} ({chat_id}) is not in your target list")
-                        return
+            # Get list of targets
+            targets = list(self.target_chats)
+            target_str = command_parts[1]
+            target_list = [t.strip() for t in target_str.split(',')]
+
+            removed = []
+            not_found = []
+
+            for target in target_list:
+                try:
+                    # Try parsing as serial number first
+                    if target.isdigit() and int(target) > 0 and int(target) <= len(targets):
+                        serial_no = int(target)
+                        chat_id = targets[serial_no - 1]  # Convert to 0-based index
+                        if chat_id in self.target_chats:
+                            self.target_chats.remove(chat_id)
+                            removed.append(f"Serial #{target} → {chat_id}")
+                except Exception as e:
+                    logger.error(f"Error processing target {target}: {str(e)}")
+                    continue
 
             # Process from command parameters
             command_parts = event.text.split(maxsplit=1)
@@ -2606,39 +2577,73 @@ The message will be forwarded at the scheduled time.
 
     @admin_only
     async def cmd_joinchat(self, event):
-        """Join chat/group"""
+        """Join chat/group from message or reply"""
         try:
+            chats = []
+            
+            # Check if replying to a message
+            if event.is_reply:
+                replied_msg = await event.get_reply_message()
+                if replied_msg.text:
+                    # Extract topic links (t.me/c/channelid/topicid)
+                    topic_links = re.findall(r'(?:https?://)?(?:t\.me|telegram\.me|telegram\.dog)/c/(\d+)(?:/\d+)?', replied_msg.text)
+                    chats.extend([f"-100{chat_id}" for chat_id in topic_links])
+                    
+                    # Extract regular t.me links
+                    links = re.findall(r'(?:https?://)?(?:t\.me|telegram\.me|telegram\.dog)/(?!c/)([^\s/]+)(?:/\S*)?', replied_msg.text)
+                    chats.extend([link for link in links])
+                    
+                    # Extract usernames
+                    usernames = re.findall(r'@[\w\d_]+', replied_msg.text)
+                    chats.extend(usernames)
+            
+            # Also check command arguments
             command_parts = event.text.split(maxsplit=1)
-            if len(command_parts) < 2:
-                await event.reply("❌ Please provide chat links or usernames\nFormat: /joinchat <chat1,chat2,...>")
+            if len(command_parts) > 1:
+                additional_chats = command_parts[1].split(',')
+                chats.extend([c.strip() for c in additional_chats if c.strip()])
+
+            if not chats:
+                await event.reply("❌ Please provide chat links/usernames or reply to a message containing them\nFormat: /joinchat <chat1,chat2,...>")
                 return
 
-            chats = command_parts[1].split(',')
+            # Show progress message
+            progress_msg = await event.reply("🔄 Processing join requests...")
+            
             success_list = []
             fail_list = []
 
             for chat in chats:
                 chat = chat.strip()
                 try:
-                    if chat.startswith('t.me/') or chat.startswith('https://t.me/'):
+                    if 't.me/' in chat or 'telegram.me/' in chat or 'telegram.dog/' in chat:
+                        # Handle various invite link formats
                         if 'joinchat' in chat or '+' in chat:
-                            # Private chat link
-                            invite_hash = chat.split('/')[-1]
+                            invite_hash = chat.split('/')[-1].replace('+', '')
                             await self.client(ImportChatInviteRequest(invite_hash))
                         else:
-                            # Public chat link
-                            await self.client(JoinChannelRequest(chat))
+                            # Clean the link to get username
+                            username = chat.split('/')[-1].split('?')[0]
+                            await self.client(JoinChannelRequest(username))
                     else:
-                        # Username
-                        chat = chat.lstrip('@')
-                        await self.client(JoinChannelRequest(chat))
+                        # Handle username format
+                        username = chat.lstrip('@')
+                        await self.client(JoinChannelRequest(username))
+                    
                     success_list.append(chat)
                     logger.info(f"Successfully joined chat: {chat}")
+                    
+                    # Update progress
+                    await progress_msg.edit(f"🔄 Joined {len(success_list)}/{len(chats)} chats...")
+                    
+                    # Small delay to avoid flood limits
+                    await asyncio.sleep(0.5)
+                    
                 except Exception as e:
                     fail_list.append(f"{chat}: {str(e)}")
                     logger.error(f"Failed to join chat {chat}: {str(e)}")
 
-            # Prepare response
+            # Prepare final response
             response = []
             if success_list:
                 response.append(f"✅ Successfully joined {len(success_list)} chat(s):")
@@ -2652,16 +2657,93 @@ The message will be forwarded at the scheduled time.
                 for fail in fail_list:
                     response.append(f"• {fail}")
 
-            await event.reply("\n".join(response))
+            await progress_msg.edit("\n".join(response))
+            logger.info(f"Join operation completed - Success: {len(success_list)}, Failed: {len(fail_list)}")
         except Exception as e:
             logger.error(f"Error in joinchat command: {str(e)}")
             await event.reply(f"❌ Error: {str(e)}")
 
     @admin_only
     async def cmd_leavechat(self, event):
-        """Leave chat/group"""
-        # Implementation placeholder for interface completeness
-        await event.reply("✅ Command executed - left chats successfully")
+        """Leave chat/group from message or reply"""
+        try:
+            chats = []
+            
+            # Check if replying to a message
+            if event.is_reply:
+                replied_msg = await event.get_reply_message()
+                if replied_msg.text:
+                    # Extract all t.me links from the message
+                    links = re.findall(r'(?:https?://)?(?:t\.me|telegram\.me|telegram\.dog)/[^\s/]+(?:/\S*)?', replied_msg.text)
+                    chats.extend(links)
+                    
+                    # Extract usernames
+                    usernames = re.findall(r'@[\w\d_]+', replied_msg.text)
+                    chats.extend(usernames)
+            
+            # Also check command arguments
+            command_parts = event.text.split(maxsplit=1)
+            if len(command_parts) > 1:
+                additional_chats = command_parts[1].split(',')
+                chats.extend([c.strip() for c in additional_chats if c.strip()])
+
+            if not chats:
+                await event.reply("❌ Please provide chat links/usernames or reply to a message containing them\nFormat: /leavechat <chat1,chat2,...>")
+                return
+
+            # Show progress message
+            progress_msg = await event.reply("🔄 Processing leave requests...")
+            
+            success_list = []
+            fail_list = []
+
+            for chat in chats:
+                chat = chat.strip()
+                try:
+                    # Get the chat entity first
+                    if 't.me/' in chat or 'telegram.me/' in chat or 'telegram.dog/' in chat:
+                        username = chat.split('/')[-1].split('?')[0]
+                        if 'joinchat' in chat or '+' in chat:
+                            continue  # Skip invite links for leave command
+                    else:
+                        username = chat.lstrip('@')
+                    
+                    # Leave the chat
+                    entity = await self.client.get_entity(username)
+                    await self.client(LeaveChannelRequest(entity))
+                    
+                    success_list.append(chat)
+                    logger.info(f"Successfully left chat: {chat}")
+                    
+                    # Update progress
+                    await progress_msg.edit(f"🔄 Left {len(success_list)}/{len(chats)} chats...")
+                    
+                    # Small delay to avoid flood limits
+                    await asyncio.sleep(0.5)
+                    
+                except Exception as e:
+                    fail_list.append(f"{chat}: {str(e)}")
+                    logger.error(f"Failed to leave chat {chat}: {str(e)}")
+
+            # Prepare final response
+            response = []
+            if success_list:
+                response.append(f"✅ Successfully left {len(success_list)} chat(s):")
+                for chat in success_list:
+                    response.append(f"• {chat}")
+
+            if fail_list:
+                if response:
+                    response.append("")
+                response.append(f"❌ Failed to leave {len(fail_list)} chat(s):")
+                for fail in fail_list:
+                    response.append(f"• {fail}")
+
+            await progress_msg.edit("\n".join(response))
+            logger.info(f"Leave operation completed - Success: {len(success_list)}, Failed: {len(fail_list)}")
+        except Exception as e:
+            logger.error(f"Error in leavechat command: {str(e)}")
+            await event.reply(f"❌ Error: {str(e)}")
 
     @admin_only
     async def cmd_leaveandremove(self, event):
@@ -2671,9 +2753,99 @@ The message will be forwarded at the scheduled time.
 
     @admin_only
     async def cmd_listjoined(self, event):
-        """List joined groups"""
-        # Implementation placeholder for interface completeness
-        await event.reply("✅ Command executed - here's the list of joined groups")
+        """List joined groups and optionally add them as targets with --all flag"""
+        try:
+            command_parts = event.text.split()
+            add_all = "--all" in command_parts
+            page = 1
+            items_per_page = 20
+
+            # Show loading message
+            status_msg = await event.reply("🔄 Fetching joined chats...")
+
+            # Get all dialogs
+            all_chats = []
+            added_count = 0
+            async for dialog in self.client.iter_dialogs():
+                try:
+                    # Check if it's a channel or group and not a private chat
+                    if (dialog.is_channel or dialog.is_group) and not dialog.is_user:
+                        chat_id = dialog.id
+                        title = dialog.title or "Untitled"
+                        chat_type = "Channel" if dialog.is_channel else "Group"
+                        
+                        # Get additional info
+                        try:
+                            full_chat = await self.client(GetFullChannelRequest(dialog.entity))
+                            members = full_chat.full_chat.participants_count
+                        except:
+                            members = 'N/A'
+                        
+                        username = dialog.entity.username if hasattr(dialog.entity, 'username') else None
+                        
+                        # If --all flag is used, add non-targeted chats to targets
+                        if add_all and chat_id not in self.target_chats:
+                            self.target_chats.add(chat_id)
+                            added_count += 1
+                            
+                        all_chats.append({
+                            'id': chat_id,
+                            'title': title,
+                            'type': chat_type,
+                            'username': username,
+                            'members': members,
+                            'is_target': chat_id in self.target_chats
+                        })
+                except Exception as e:
+                    logger.error(f"Error processing dialog: {str(e)}")
+                    continue
+
+            if not all_chats:
+                await status_msg.edit("📝 No joined chats found. Make sure you have joined some groups/channels first.")
+                return
+
+            # Calculate pagination
+            total_pages = (len(all_chats) + items_per_page - 1) // items_per_page
+            page = min(max(1, page), total_pages)
+            start_idx = (page - 1) * items_per_page
+            end_idx = start_idx + items_per_page
+
+            # Prepare the results message
+            result = f"""🔍 **Joined Chats Overview**
+📊 Total: {len(all_chats)} chats found
+📄 Page {page}/{total_pages}\n"""
+
+            if add_all:
+                result += f"✨ Added {added_count} new chats to targets\n"
+
+            result += "\n"
+
+            # Add chats for current page
+            for idx, chat in enumerate(all_chats[start_idx:end_idx], start=start_idx + 1):
+                username_str = f" (@{chat['username']})" if chat['username'] else ""
+                target_str = "🎯 Targeted" if chat['is_target'] else "📌 Not Targeted"
+                result += f"**{idx}. {chat['title']}**{username_str}\n"
+                result += f"   • Chat ID: `{chat['id']}`\n"
+                result += f"   • Type: {chat['type']}\n"
+                result += f"   • Members: {chat['members']}\n"
+                result += f"   • Status: {target_str}\n\n"
+
+            # Add summary
+            result += f"\n**Summary:**\n"
+            result += f"• Total chats: {len(all_chats)}\n"
+            result += f"• Targeted chats: {sum(1 for chat in all_chats if chat['is_target'])}\n"
+            result += f"• Showing: {start_idx + 1} to {min(end_idx, len(all_chats))}\n\n"
+
+            # Add usage info
+            result += "**Usage:**\n"
+            result += "• `/listjoined` - View joined chats\n"
+            result += "• `/listjoined --all` - View AND add all joined chats as targets"
+
+            await status_msg.edit(result)
+            logger.info(f"Listed joined chats: {len(all_chats)} total, added {added_count} new targets")
+        except Exception as e:
+            logger.error(f"Error in listjoined command: {str(e)}")
+            await event.reply(f"❌ Error: {str(e)}")
 
     @admin_only
     async def cmd_findgroup(self, event):
@@ -2997,7 +3169,10 @@ The message will be forwarded at the scheduled time.
 
                     result += f"{idx}. `{campaign_id}` - {campaign_type}\n"
 
-                result += "\nUse `/livemonitor <campaign_id>` to start monitoring a specific campaign"
+                result += "\n\n📝 **Usage:**"
+                result += "\n• `/listjoined` - Show only targeted chats"
+                result += "\n• `/listjoined --all` - Show all joined chats"
+                result += "\n• To add shown chats as targets, use `/addtarget <chat_id>`"
 
                 await event.reply(result)
                 return
@@ -3209,10 +3384,9 @@ Type /help to see all available commands and features!
 
 async def main():
     """Main function to start the Telegram userbot"""
-    client = None  # Initialize client outside try block
     try:
         # Load credentials from environment
-        api_id = int(os.getenv('API_ID'))
+        api_id = int(os.getenv('API_ID', '0'))
         api_hash = os.getenv('API_HASH', '')
         phone_number = os.getenv('PHONE_NUMBER', '')
 
@@ -3225,13 +3399,15 @@ async def main():
             'siimplebot1',
             api_id,
             api_hash,
-            device_model="--Ꮪɪᴍṗʟᴇ'𝚜 �𝙳𝙱𝙾𝚃",
+            device_model="--Ꮪɪᴍṗʟᴇ'𝚜 𝙰𝙳𝙱𝙾𝚃",
             system_version="1.0",
             app_version="1.0"
         )
 
-        # Connect and authenticate
+        # Connect
         await client.connect()
+
+        # Login if needed
         if not await client.is_user_authorized():
             await client.send_code_request(phone_number)
             try:
@@ -3241,19 +3417,17 @@ async def main():
                 password = input('Enter 2FA password: ')
                 await client.sign_in(password=password)
 
-        # Create and start forwarder
+        # Create forwarder
         forwarder = MessageForwarder(client)
-        await forwarder.start()  # Actually use the forwarder
 
-        # Run until interrupted
+        # Run forever
         await idle()
 
     except Exception as e:
         logger.error(f"Error in main: {str(e)}")
         return 1
     finally:
-        if client:  # Only disconnect if client exists
-            await client.disconnect()
+        await client.disconnect()
 
     return 0
 
@@ -3261,7 +3435,7 @@ async def idle():
     """Keep the bot running"""
     try:
         while True:
-            await asyncio.sleep(3600)  # Sleep longer to reduce CPU usage
+            await asyncio.sleep(1)
     except asyncio.CancelledError:
         pass
 
