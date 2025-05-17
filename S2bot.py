@@ -93,7 +93,7 @@ def admin_only(func: Callable):
                 # Only send the message if it's not a silent command (system might send multiple commands)
                 if not command_name.startswith("/silent"):
                     logger.info(f"Sending offline message for command {command_name}")
-                    await event.reply("⚠️ --Ꮪɪᴍṗʟᴇ'𝚜 𝙰𝙳𝙱𝙾𝚃 is currently offline! Use `/start` command to wake it up. 🚀")
+                    await event.reply("⚠️ --Ꮪ2 𝙰𝙳𝙱𝙾𝚃 is currently offline! Use `/start` command to wake it up. 🚀")
                 return None
 
             logger.info(f"Admin command authorized for user {sender}")
@@ -1646,13 +1646,13 @@ class MessageForwarder:
             welcome_text = f"""
 ╔═══════════════════════════╗
 ║  🌟 WELCOME TO THE BEST   ║
-║  --Ꮪɪᴍṗʟᴇ'𝚜 𝙰𝙳𝙱𝙾𝚃 #1   ║
+║  --Ꮪ2 𝙰𝙳𝙱𝙾𝚃 #1   ║
 ║       @{username}         ║
 ╚═══════════════════════════╝
 
 💫 Hey {name}! Ready to experience the ULTIMATE automation? 💫
 
-I am --Ꮪɪᴍṗʟᴇ'𝚜 𝙰𝙳𝙱𝙾𝚃, your ultimate Telegram assistant, built to make your experience smarter, faster, and way more fun! 🎭⚡
+I am --Ꮪ2 𝙰𝙳𝙱𝙾𝚃, your ultimate Telegram assistant, built to make your experience smarter, faster, and way more fun! 🎭⚡
 
 💎 What I Can Do: 
 ✅ Fast & Smart Automation ⚡ 
@@ -1733,7 +1733,7 @@ I'm here to make your Telegram experience legendary! 🚀💙 Stay awesome, and 
             await asyncio.sleep(0.5)
             await msg.delete()
 
-            stop_message = f"""⚠️ --Ꮪɪᴍṗʟᴇ'𝚜 𝙰𝙳𝙱𝙾𝚃 SYSTEM SHUTDOWN ⚠️
+            stop_message = f"""⚠️ --Ꮪ2'𝚜 𝙰𝙳𝙱𝙾𝚃 SYSTEM SHUTDOWN ⚠️
 
 Hey {name}! 😔 Looks like you've decided to stop me... but don't worry, I'll be here whenever you need me! 🚀
 
@@ -1780,7 +1780,7 @@ Until then, stay awesome & take care! 😎
             # Delete the loading message
             await help_msg.delete()
 
-            help_text = f"""🚀🔥 WELCOME TO --Ꮪɪᴍṗʟᴇ'𝚜 𝙰𝙳𝙱𝙾𝚃 COMMAND CENTER 🔥🚀
+            help_text = f"""🚀🔥 WELCOME TO --Ꮪ2 𝙰𝙳𝙱𝙾𝚃 COMMAND CENTER 🔥🚀
 
 Hey {name}! 😎 Ready to take control? Here's what I can do for you! ⚡
 
@@ -1861,7 +1861,7 @@ Type `/help` anytime to get assistance!
 
 ━━━━━━━━━━━━━━━━━━━━━━
 
-🔥 Powered by --Ꮪɪᴍṗʟᴇ'𝚜 𝙰𝙳𝙱𝙾𝚃 (@{username})
+🔥 Powered by --Ꮪ2 𝙰𝙳𝙱𝙾𝚃 (@{username})
 
 🚀 Stay Smart, Stay Automated!
 """
@@ -5884,7 +5884,7 @@ Use `/failedchats` to view the updated failed chats list.
                 connection_status = "🔴 Poor"
             
             # Generate the enhanced client info message
-            client_info = f"""🤖 --Ꮪɪᴍṗʟᴇ'𝚜 𝙰𝙳𝙱𝙾𝚃 ADVANCED CLIENT DASHBOARD 🤖
+            client_info = f"""🤖 --Ꮪ2 𝙰𝙳𝙱𝙾𝚃 ADVANCED CLIENT DASHBOARD 🤖
 
 Hey {name}! 🚀 Here's your comprehensive client information:
 
@@ -5931,7 +5931,7 @@ Type `/monitor` to view your active campaign dashboard!
 
 📌 Stay smart, stay secure, and enjoy the automation!
 
-🚀 Powered by --Ꮪɪᴍṗʟᴇ'𝚜 𝙰𝙳𝙱𝙾𝚃 (@{username})
+🚀 Powered by --Ꮪ2 𝙰𝙳𝙱𝙾𝚃 (@{username})
 """
             await event.reply(client_info)
             logger.info("Enhanced client diagnostics displayed")
@@ -6005,7 +6005,7 @@ async def main():
             'adbot',  # Use existing adbot session file instead of simplegram_session
             api_id,
             api_hash,
-            device_model="--Ꮪɪᴍṗʟᴇ'𝚜 𝙰𝙳𝙱𝙾𝚃",
+            device_model="--Ꮪ2 𝙰𝙳𝙱𝙾𝚃",
             system_version="1.0",
             app_version="1.0",
             connection_retries=20,         # Increased retries
