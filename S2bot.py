@@ -93,7 +93,7 @@ def admin_only(func: Callable):
                 # Only send the message if it's not a silent command (system might send multiple commands)
                 if not command_name.startswith("/silent"):
                     logger.info(f"Sending offline message for command {command_name}")
-                    await event.reply("⚠️ --Ꮪ2 𝙰𝙳𝙱𝙾𝚃 is currently offline! Use `/start` command to wake it up. 🚀")
+                    await event.reply("⚠️ -- Ꮪ2 𝙰𝙳𝙱𝙾𝚃 is currently offline! Use `/start` command to wake it up. 🚀")
                 return None
 
             logger.info(f"Admin command authorized for user {sender}")
@@ -1613,8 +1613,8 @@ class MessageForwarder:
             if 'me' not in self._cache:
                 self._cache['me'] = await self.client.get_me()
             me = self._cache['me']
-            username = "siimplebot1"  # Always use this fixed username
-            name = me.first_name if hasattr(me, 'first_name') else "Siimple"  # Use client name instead of user
+            username = "S2bot"  # Always use this fixed username
+            name = me.first_name if hasattr(me, 'first_name') else "S2bot"  # Use client name instead of user
 
             # Enable the bot to respond to commands
             self.forwarding_enabled = True
@@ -1689,7 +1689,7 @@ I'm here to make your Telegram experience legendary! 🚀💙 Stay awesome, and 
         try:
             # Get client name for personalized message
             me = await self.client.get_me()
-            name = me.first_name if hasattr(me, 'first_name') else "Siimple"  # Use client name instead of user
+            name = me.first_name if hasattr(me, 'first_name') else "S2"  # Use client name instead of user
 
             # Cancel all forwarding tasks
             for task_id, task in list(self._forwarding_tasks.items()):
@@ -1733,7 +1733,7 @@ I'm here to make your Telegram experience legendary! 🚀💙 Stay awesome, and 
             await asyncio.sleep(0.5)
             await msg.delete()
 
-            stop_message = f"""⚠️ --Ꮪ2'𝚜 𝙰𝙳𝙱𝙾𝚃 SYSTEM SHUTDOWN ⚠️
+            stop_message = f"""⚠️ -- Ꮪ2'𝚜 𝙰𝙳𝙱𝙾𝚃 SYSTEM SHUTDOWN ⚠️
 
 Hey {name}! 😔 Looks like you've decided to stop me... but don't worry, I'll be here whenever you need me! 🚀
 
@@ -1746,7 +1746,7 @@ Just type `/start`, and I'll be back in action, ready to assist you! 🔥
 
 Until then, stay awesome & take care! 😎
 
-🚀 Powered by --Ꮪ2'𝚜 𝙰𝙳𝙱𝙾𝚃 (@S2bot1)
+🚀 Powered by --Ꮪ2'𝚜 𝙰𝙳𝙱𝙾𝚃 (@ S2bot1)
 """
             await event.reply(stop_message)
             logger.info("Stop command executed - Bot deactivated")
@@ -1759,8 +1759,8 @@ Until then, stay awesome & take care! 😎
         """Show help message with animation"""
         try:
             me = await self.client.get_me()
-            username = "siimplebot1"  # Always use this fixed username
-            name = me.first_name if hasattr(me, 'first_name') else "Siimple"  # Use client name instead of user
+            username = "S2bot"  # Always use this fixed username
+            name = me.first_name if hasattr(me, 'first_name') else "S2bot"  # Use client name instead of user
 
             # Show loading animation
             help_msg = await event.reply("🔄 Loading Command Center...")
@@ -1973,7 +1973,7 @@ Type `/help` anytime to get assistance!
 
             # Get client name for personalized message
             me = await self.client.get_me()
-            name = me.first_name if hasattr(me, 'first_name') else "Siimple"
+            name = me.first_name if hasattr(me, 'first_name') else "S2bot"
 
             result = f"""✅ **COMPLETE SYSTEM RESET**
 
@@ -5818,7 +5818,7 @@ Use `/failedchats` to view the updated failed chats list.
             me = await self.client.get_me()
             
             # Always use the fixed username regardless of actual account
-            username = "siimplebot1"
+            username = "S2bot"
             
             # Get the user's name for personalization
             name = await self._get_sender_name(event)
@@ -5889,7 +5889,7 @@ Use `/failedchats` to view the updated failed chats list.
 Hey {name}! 🚀 Here's your comprehensive client information:
 
 📱 **Client Identity**
-• User: siimplead1
+• User: S2ad1
 • User ID: {me.id}
 • Phone: {phone_display}
 • First Name: {me.first_name if hasattr(me, 'first_name') else 'N/A'}
